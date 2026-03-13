@@ -48,9 +48,8 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      setState(() {
-        _isLoading = false;
-      });
+      // Do NOT call setState after this point — onLoginSuccess will
+      // trigger parent rebuild which removes this widget from the tree.
       widget.onLoginSuccess();
     } catch (e) {
       if (!mounted) {
