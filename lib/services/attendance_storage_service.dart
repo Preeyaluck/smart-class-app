@@ -15,10 +15,15 @@ class AttendanceStorageService {
   static const String _webStorageKey = 'attendance_records';
   Database? _database;
   SharedPreferences? _sharedPreferences;
+  final List<String> _webMemoryRecords = <String>[];
 
   Future<void> initialize() async {
     if (kIsWeb) {
-      _sharedPreferences ??= await SharedPreferences.getInstance();
+      try {
+        _sharedPreferences ??= await SharedPreferences.getInstance();
+      } catch (_) {
+        // localStorage may be unavailable in Guest/InPrivate mode.
+      }
       return;
     }
     _database ??= await _openDatabase();
@@ -59,13 +64,23 @@ class AttendanceStorageService {
 
   Future<int> insertRecord(AttendanceRecord record) async {
     if (kIsWeb) {
-      final SharedPreferences prefs =
-          _sharedPreferences ??= await SharedPreferences.getInstance();
-      final List<String> current =
-          prefs.getStringList(_webStorageKey) ?? <String>[];
-      current.add(jsonEncode(record.toMap()));
-      await prefs.setStringList(_webStorageKey, current);
-      return current.length;
+      final String encoded = jsonEncode(record.toMap());
+      await initialize();
+
+      try {
+        if (_sharedPreferences != null) {
+          final List<String> current =
+              _sharedPreferences!.getStringList(_webStorageKey) ?? <String>[];
+          current.add(encoded);
+          await _sharedPreferences!.setStringList(_webStorageKey, current);
+          return current.length;
+        }
+      } catch (_) {
+        // Fall back to in-memory storage if persistence is blocked.
+      }
+
+      _webMemoryRecords.add(encoded);
+      return _webMemoryRecords.length;
     }
 
     final Database db = _database ??= await _openDatabase();
@@ -74,10 +89,19 @@ class AttendanceStorageService {
 
   Future<List<AttendanceRecord>> getAllRecords() async {
     if (kIsWeb) {
-      final SharedPreferences prefs =
-          _sharedPreferences ??= await SharedPreferences.getInstance();
-      final List<String> raw =
-          prefs.getStringList(_webStorageKey) ?? const <String>[];
+      await initialize();
+      List<String> raw = const <String>[];
+
+      try {
+        if (_sharedPreferences != null) {
+          raw = _sharedPreferences!.getStringList(_webStorageKey) ??
+              const <String>[];
+        } else {
+          raw = List<String>.from(_webMemoryRecords);
+        }
+      } catch (_) {
+        raw = List<String>.from(_webMemoryRecords);
+      }
 
       final List<AttendanceRecord> records = <AttendanceRecord>[];
       for (final String item in raw) {

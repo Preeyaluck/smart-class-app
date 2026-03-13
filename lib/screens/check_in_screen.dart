@@ -101,7 +101,20 @@ class _CheckInScreenState extends State<CheckInScreen> {
       mood: _mood,
     );
 
-    await AttendanceStorageService.instance.insertRecord(record);
+    try {
+      await AttendanceStorageService.instance.insertRecord(record);
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isSaving = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Save failed: $e')),
+      );
+      return;
+    }
 
     if (!mounted) {
       return;
